@@ -11,11 +11,12 @@ python main.py
 
 
 # Instructions
-1) To visualize training data, uncomment line 119. Press 'q' to exit.
-2) To test forward pass on dummy data, to check output dimensions, uncomment line 120.
+1) Code by default trains for 50 epochs, and runs inference on the first image of train dataset
+2) To visualize training data, uncomment line 119. Press 'q' to exit.
+3) To test forward pass on dummy data, to check output dimensions, uncomment line 120.
 
 
 # To Do
-1) Complete train loop
-2) Add and test different loss functions (Focal Loss, Categorical Cross Entropy, etc)
+1) Add model saving
+2) Add and test different loss functions (Focal Loss, Dice Loss etc)
 3) Test different model architectures
