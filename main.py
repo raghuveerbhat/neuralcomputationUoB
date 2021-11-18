@@ -1,12 +1,14 @@
 import os
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import glob
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.data as data
+from torch.utils.data import DataLoader, Dataset
+import torch.optim as optim
 
 class Unet(torch.nn.Module):
 	def __init__(self, image_channels, hidden_size=16, n_classes=4):	
@@ -89,7 +91,7 @@ class Unet(torch.nn.Module):
 
 		return self.out
 
-class DatasetClass(data.Dataset):
+class DatasetClass(Dataset):
 	def __init__(self, root=''):
 		super(DatasetClass, self).__init__()
 		self.img_files = glob.glob(os.path.join(root, 'image', '*.png'))
@@ -101,24 +103,31 @@ class DatasetClass(data.Dataset):
 	def __getitem__(self, index):
 		img_path = self.img_files[index]
 		mask_path = self.mask_files[index]
-		data = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+		data = np.expand_dims(cv2.imread(img_path, cv2.IMREAD_UNCHANGED), 0)
 		label = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-		return torch.from_numpy(data).float(), torch.from_numpy(label).float()
+		return torch.from_numpy(data).float(), torch.from_numpy(label).long()
 
 	def __len__(self):
 		return len(self.img_files)
 
 class Main:
-	def __init__(self, train__dir='./data/train', test_dir='./data/test', epochs = 10):
+	def __init__(self, train__dir='./data/train', test_dir='./data/test', epochs = 50, learning_rate=1e-3, batch_size=16, num_workers=2):
 		self.train_dir, self.test_dir = train__dir, test_dir
-		self.epochs = epochs
+		self.epochs, self.lr = epochs, learning_rate
+		self.batch_size, self.num_workers = batch_size, num_workers
+		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 		self.train_dataset_size = len(glob.glob(os.path.join(self.train_dir, 'image', "*.png")))
-		self.train_dataloader = DatasetClass(self.train_dir)
-		self.test_dataloader = DatasetClass(self.test_dir)
-		self.model = Unet(image_channels=1, hidden_size=16)
-		self.data_viz()	# Un comment to visualize data
+		self.train_dataset = DatasetClass(self.train_dir)
+		self.test_dataset = DatasetClass(self.test_dir)
+		self.train_dataloader = DataLoader(self.train_dataset, self.batch_size, True,
+									num_workers=self.num_workers, pin_memory=True, drop_last=True)
+		self.model = Unet(image_channels=1, hidden_size=16).to(self.device)
+		self.loss = nn.CrossEntropyLoss()
+		self.optim = optim.Adam(self.model.parameters(), self.lr)
+		# self.data_viz()	# Un comment to visualize data
+		self.train()
 		# self.model_test()	# Un comment to test forward pass of model
-	   
+   
 	def data_viz(self):
 		for i in range(self.train_dataset_size):
 			image = cv2.imread(os.path.join(self.train_dir, 'image', 'cmr{}.png'.format(str(i + 1))), cv2.IMREAD_UNCHANGED)
@@ -137,14 +146,31 @@ class Main:
 
 	def train(self):
 		for epoch in range(self.epochs):
-			for batch_idx, inputs in enumerate(self.train_dataloader):
-				pass
+			epoch_loss = 0
+			for batch_idx, (data, label) in enumerate(self.train_dataloader):
+				data, label = data.to(self.device), label.to(self.device)
+				out = self.model(data)
+				loss = self.loss(out, label)
+				self.optim.zero_grad()
+				loss.backward()
+				self.optim.step()
+				epoch_loss += loss
+			print("EPOCH {}: ".format(epoch), epoch_loss/batch_idx)
+		self.model_test()
 
 	def model_test(self):
 		img = cv2.imread(os.path.join(self.train_dir, 'image', 'cmr1.png'), cv2.IMREAD_UNCHANGED)
-		self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).float()
-		out = self.model(self.img_tensor)
-		print(out.shape)
+		self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(self.device).float()
+		with torch.no_grad():
+			out = self.model(self.img_tensor)
+			out = F.softmax(out, 1).cpu().permute(0,2,3,1).numpy()[0]*255
+			out_img = np.hstack((img.astype(np.uint8), out[:,:,0].astype(np.uint8), out[:,:,1].astype(np.uint8), out[:,:,2].astype(np.uint8), out[:,:,3].astype(np.uint8)))
+			# plt.imshow(out_img)
+			cv2.imshow("IMG",out_img)
+			# cv2.imwrite("model_out.png", out_img)
+			k = cv2.waitKey()
+			if k == ord('q'):
+				exit()
 
 if __name__ == '__main__':
 	Main()
