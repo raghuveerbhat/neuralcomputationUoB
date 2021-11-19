@@ -17,6 +17,5 @@ python main.py
 
 
 # To Do
-1) Add model saving
-2) Add and test different loss functions (Focal Loss, Dice Loss etc)
-3) Test different model architectures
+1) Add and test different loss functions (Focal Loss, Dice Loss etc)
+2) Test different model architectures
