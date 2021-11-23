@@ -57,10 +57,10 @@ class Main:
 			self.data_viz()	# Un comment to visualize data
 			self.dataset_properties() # Un comment to find properties of training data
 		
-		# carry out training
-		self.train()
+		self.train()		# carry out training
 
 		self.model_test()  # Un comment to test forward pass of model
+		# self.evaluate()		# Evaluate dice score	
 
 	def dataset_properties(self):
 		"""Find out statistics about number of pixels in the dataset belonging to each class"""
@@ -169,8 +169,8 @@ class Main:
 			with torch.no_grad():
 				# process through model
 				out = self.model(self.img_tensor)
-				out = F.softmax(out, 1).cpu().permute(0, 2, 3, 1).numpy()[0] * 255
-
+				out = F.softmax(out, 1).permute(0, 2, 3, 1)
+				out = self.one_hot(out).cpu().numpy()[0]*255
 				# stack processed images into one image
 				out_img = np.hstack((img.astype(np.uint8),
 									 out[:, :, 0].astype(np.uint8),  # background
@@ -183,9 +183,9 @@ class Main:
 				for i in range(len(np.unique(img_mask))):
 					out_actual[:, :, i][np.where(img_mask == i)] = 255
 				out_actual_img = np.hstack((img.astype(np.uint8),
-											out_actual[:, :, 0].astype(np.uint8),  # background
-											out_actual[:, :, 1].astype(np.uint8),  # right ventricle
-											out_actual[:, :, 2].astype(np.uint8),  # myocardium
+											out_actual[:, :, 0].astype(np.uint8),   # background
+											out_actual[:, :, 1].astype(np.uint8),   # right ventricle
+											out_actual[:, :, 2].astype(np.uint8),   # myocardium
 											out_actual[:, :, 3].astype(np.uint8)))  # left ventricle
 
 				# display both images
@@ -195,6 +195,52 @@ class Main:
 				if k == ord('q'):
 					exit()
 
+	def evaluate(self):
+		"""display performance on each of validation data"""
+		for i in range(1, 21):
+			iStr = "0" + str(i) if i < 10 else str(i)
+
+			# load in base image
+			img = cv2.imread(os.path.join(self.val_dir, 'image', 'cmr1{}.png'.format(iStr)), cv2.IMREAD_UNCHANGED)
+
+			# load in correct mask
+			img_mask = cv2.imread(os.path.join(self.val_dir, 'mask', 'cmr1{}_mask.png'.format(iStr)),
+								  cv2.IMREAD_UNCHANGED)
+
+			# convert base image to tensor
+			self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(
+				self.device).float()
+			with torch.no_grad():
+				# process through model
+				out = self.model(self.img_tensor)
+				out = F.softmax(out, 1).permute(0, 2, 3, 1)
+				self.un_one_hot(out)
+				
+	def one_hot(self, masks):
+		return F.one_hot(torch.argmax(masks, axis=-1))
+
+	def un_one_hot(self, masks):
+		""" Convert from K channels to 1 channel containing pixel values corresponding to class index"""
+		return torch.argmax(masks, axis=-1)
+
+	def categorical_dice(self, mask1, mask2, label_class=1):
+		"""
+		Dice score of a specified class between two volumes of label masks.
+		(classes are encoded but by label class number not one-hot )
+		Note: stacks of 2D slices are considered volumes.
+
+		Args:
+			mask1: N label masks, numpy array shaped (H, W, N)
+			mask2: N label masks, numpy array shaped (H, W, N)
+			label_class: the class over which to calculate dice scores
+
+		Returns:
+			volume_dice
+		"""
+		mask1_pos = (mask1 == label_class).astype(np.float32)
+		mask2_pos = (mask2 == label_class).astype(np.float32)
+		dice = 2 * np.sum(mask1_pos * mask2_pos) / (np.sum(mask1_pos) + np.sum(mask2_pos))
+		return dice
 
 if __name__ == '__main__':
-	Main(load_model_params=False, save_model_params=True, dataset_debug=True)
+	Main(load_model_params=False, save_model_params=True, dataset_debug=False)
