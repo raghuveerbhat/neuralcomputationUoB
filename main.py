@@ -16,7 +16,7 @@ from ncprojectLossFunctions import *
 
 
 class Main:
-	def __init__(self, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
+	def __init__(self, train=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
 				 learning_rate=1e-3, batch_size=16, num_workers=2, load_model_params=True, save_model_params=True,
 				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True):
 
@@ -59,7 +59,8 @@ class Main:
 			self.data_viz()	# Un comment to visualize data
 			self.dataset_properties() # Un comment to find properties of training data
 		
-		self.train()		# carry out training
+		if train:
+			self.train()		# carry out training
 
 		self.model_test()  # Un comment to test forward pass of model
 		self.evaluate()		# Evaluate dice score	
@@ -156,7 +157,7 @@ class Main:
 				torch.save(self.model.state_dict(), self.saved_params_path)
 		plt.plot(losses)
 		plt.xticks(np.arange(0, len(losses), 1))
-		plt.show()
+		# plt.show()
 
 	def model_test(self):
 		"""display performance on each of validation data"""
@@ -268,4 +269,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(load_model_params=False, save_model_params=True, dataset_debug=False)
+	Main(train=False, load_model_params=True, save_model_params=True, dataset_debug=False)
