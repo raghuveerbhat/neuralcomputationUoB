@@ -16,7 +16,7 @@ from ncprojectLossFunctions import *
 
 
 class Main:
-	def __init__(self, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=5,
+	def __init__(self, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
 				 learning_rate=1e-3, batch_size=16, num_workers=2, load_model_params=True, save_model_params=True,
 				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True):
 
@@ -130,6 +130,7 @@ class Main:
 
 	def train(self):
 		"""Carry out training on the model"""
+		losses = []
 		for epoch in range(self.epochs):
 			epoch_loss = 0
 			for batch_idx, (data, label) in enumerate(self.train_dataloader):
@@ -146,12 +147,16 @@ class Main:
 				loss.backward()
 				self.optim.step()
 				epoch_loss += loss
-			print("EPOCH {}: ".format(epoch), epoch_loss / batch_idx)
-
+			epoch_loss = epoch_loss.cpu().item() / batch_idx
+			losses.append(epoch_loss)
+			print("EPOCH {}: ".format(epoch), epoch_loss)
 			# save model parameters to file
 			if ((epoch+1) % self.save_freq==0) and self.save_model_params:
 				print("Saving model")
 				torch.save(self.model.state_dict(), self.saved_params_path)
+		plt.plot(losses)
+		plt.xticks(np.arange(0, len(losses), 1))
+		plt.show()
 
 	def model_test(self):
 		"""display performance on each of validation data"""
