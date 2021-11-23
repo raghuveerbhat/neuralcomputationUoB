@@ -35,11 +35,14 @@ class Main:
 		# set properties relating to dataset
 		self.train_dataset_size = len(glob.glob(os.path.join(self.train_dir, 'image', "*.png")))
 		self.train_dataset = DatasetClass(self.train_dir)
+		self.val_dataset = DatasetClass(self.val_dir)
 		self.test_dataset = DatasetClass(self.test_dir)
 
 		# load data ready for training
 		self.train_dataloader = DataLoader(self.train_dataset, self.batch_size, shuffle=True,
 										   num_workers=self.num_workers, pin_memory=True, drop_last=True)
+		self.val_dataloader = DataLoader(self.val_dataset, self.batch_size, shuffle=True,
+										   num_workers=1, pin_memory=True, drop_last=False)
 
 		# create the model
 		self.model = Unet(image_channels=1, hidden_size=16).to(self.device)
@@ -131,33 +134,41 @@ class Main:
 
 	def train(self):
 		"""Carry out training on the model"""
-		losses = []
+		train_losses = []
+		val_losses = []
 		for epoch in range(self.epochs):
-			epoch_loss = 0
-			for batch_idx, (data, label) in enumerate(self.train_dataloader):
+			train_epoch_loss = 0
+			val_epoch_loss = 0
+			for batch_idx1, (data, label) in enumerate(self.train_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
-
-				# forward pass
-				out = self.model(data)
-
-				# loss calculation
-				loss = self.loss(out, label)
-
-				# back-propogation
-				self.optim.zero_grad()
+				out = self.model(data) # forward pas
+				loss = self.loss(out, label) # loss calculation
+				self.optim.zero_grad() # back-propogation
 				loss.backward()
 				self.optim.step()
-				epoch_loss += loss
-			epoch_loss = epoch_loss.cpu().item() / batch_idx
-			losses.append(epoch_loss)
-			print("EPOCH {}: ".format(epoch), epoch_loss)
+				train_epoch_loss += loss
+
+			for batch_idx2, (data, label) in enumerate(self.val_dataloader):
+				data, label = data.to(self.device), label.to(self.device)
+				out = self.model(data) # forward pas
+				loss = self.loss(out, label) # val loss calculation
+				val_epoch_loss += loss
+
+			train_epoch_loss = train_epoch_loss.cpu().item() / batch_idx1
+			val_epoch_loss = val_epoch_loss.cpu().item() / batch_idx2
+			train_losses.append(train_epoch_loss)
+			val_losses.append(val_epoch_loss)
+			print("EPOCH {}: ".format(epoch), train_epoch_loss, val_epoch_loss)
+
 			# save model parameters to file
 			if ((epoch+1) % self.save_freq==0) and self.save_model_params:
 				print("Saving model")
 				torch.save(self.model.state_dict(), self.saved_params_path)
-		plt.plot(losses)
-		plt.xticks(np.arange(0, len(losses), 1))
-		# plt.show()
+		plt.plot(train_losses, c='r', label='train')
+		plt.plot(val_losses, c='g', label='val')
+		plt.xticks(np.arange(0, len(train_losses), 1))
+		plt.legend()
+		plt.show()
 
 	def model_test(self):
 		"""display performance on each of validation data"""
