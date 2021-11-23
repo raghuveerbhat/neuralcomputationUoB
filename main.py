@@ -12,6 +12,7 @@ import torch.optim as optim
 
 from ncprojectUnetClass import Unet
 from ncprojectDataSetClass import DatasetClass
+from ncprojectLossFunctions import *
 
 
 class Main:
@@ -48,7 +49,8 @@ class Main:
 			self.model.load_state_dict(torch.load(saved_params_path, map_location=self.device))
 
 		# set loss function
-		self.loss = nn.CrossEntropyLoss()
+		# self.loss = nn.CrossEntropyLoss()
+		self.loss = FocalLoss()
 
 		# set optimiser
 		self.optim = optim.Adam(self.model.parameters(), self.lr)
@@ -57,9 +59,9 @@ class Main:
 			self.data_viz()	# Un comment to visualize data
 			self.dataset_properties() # Un comment to find properties of training data
 		
-		# self.train()		# carry out training
+		self.train()		# carry out training
 
-		# self.model_test()  # Un comment to test forward pass of model
+		self.model_test()  # Un comment to test forward pass of model
 		self.evaluate()		# Evaluate dice score	
 
 	def dataset_properties(self):
@@ -254,8 +256,8 @@ class Main:
 		labels = torch.unique(mask2)
 		dice_scores = []
 		for label_class in labels:
-			mask1_pos = (mask1 == label_class)#.astype(torch.float32)
-			mask2_pos = (mask2 == label_class)#.astype(torch.float32)
+			mask1_pos = (mask1 == label_class)
+			mask2_pos = (mask2 == label_class)
 			dice = 2 * torch.sum(mask1_pos * mask2_pos) / (torch.sum(mask1_pos) + torch.sum(mask2_pos))
 			dice_scores.append(dice.cpu().numpy())
 		return dice_scores

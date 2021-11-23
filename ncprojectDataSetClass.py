@@ -20,7 +20,7 @@ class DatasetClass(Dataset):
         mask_path = self.mask_files[index]
         data = np.expand_dims(cv2.imread(img_path, cv2.IMREAD_UNCHANGED), 0)
         label = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-        return torch.from_numpy(data).float(), torch.from_numpy(label).long()
+        return torch.from_numpy(data).float()/255, torch.from_numpy(label).long()   # Normalize pixels to lie between [0, 1]
 
     def __len__(self):
         return len(self.img_files)
