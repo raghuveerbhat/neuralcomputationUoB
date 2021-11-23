@@ -163,9 +163,9 @@ class Main:
 			img_mask = cv2.imread(os.path.join(self.val_dir, 'mask', 'cmr1{}_mask.png'.format(iStr)),
 								  cv2.IMREAD_UNCHANGED)
 
-			# convert base image to tensor
+			# convert base image to tensor and normalize pixels to lie between [0, 1]
 			self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(
-				self.device).float()
+				self.device).float()/255
 			with torch.no_grad():
 				# process through model
 				out = self.model(self.img_tensor)
