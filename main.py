@@ -57,10 +57,10 @@ class Main:
 			self.data_viz()	# Un comment to visualize data
 			self.dataset_properties() # Un comment to find properties of training data
 		
-		self.train()		# carry out training
+		# self.train()		# carry out training
 
-		self.model_test()  # Un comment to test forward pass of model
-		# self.evaluate()		# Evaluate dice score	
+		# self.model_test()  # Un comment to test forward pass of model
+		self.evaluate()		# Evaluate dice score	
 
 	def dataset_properties(self):
 		"""Find out statistics about number of pixels in the dataset belonging to each class"""
@@ -197,6 +197,7 @@ class Main:
 
 	def evaluate(self):
 		"""display performance on each of validation data"""
+		dice_scores = []
 		for i in range(1, 21):
 			iStr = "0" + str(i) if i < 10 else str(i)
 
@@ -210,11 +211,24 @@ class Main:
 			# convert base image to tensor
 			self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(
 				self.device).float()
+			self.img_mask = torch.from_numpy(np.expand_dims(img_mask.astype(np.uint8), 0)).to(
+				self.device).float()
 			with torch.no_grad():
 				# process through model
 				out = self.model(self.img_tensor)
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
-				self.un_one_hot(out)
+				out = self.un_one_hot(out)
+				dice_scores.append(self.categorical_dice(out.permute(1,2,0), self.img_mask.permute(1,2,0)))
+		dice_scores_norm = np.sum(np.array(dice_scores),axis=0)/len(dice_scores)
+		num_classes = dice_scores_norm.shape[0]
+		plt.bar(["Class " + str(i) for i in range(num_classes)], dice_scores_norm, width = 0.1)
+		# plt.xlim(-0.5, num_classes)
+		# plt.ylim(0, 1)
+		# plt.xticks(np.arange(0, num_classes, 1))
+		# for i in range(num_classes):
+		# 	plt.annotate(str(round(num_classes[i], 2)) + " %", xy=(i-0.1, num_classes[i]+2))
+		plt.show()
+		print(dice_scores_norm, num_classes)
 				
 	def one_hot(self, masks):
 		return F.one_hot(torch.argmax(masks, axis=-1))
@@ -237,10 +251,14 @@ class Main:
 		Returns:
 			volume_dice
 		"""
-		mask1_pos = (mask1 == label_class).astype(np.float32)
-		mask2_pos = (mask2 == label_class).astype(np.float32)
-		dice = 2 * np.sum(mask1_pos * mask2_pos) / (np.sum(mask1_pos) + np.sum(mask2_pos))
-		return dice
+		labels = torch.unique(mask2)
+		dice_scores = []
+		for label_class in labels:
+			mask1_pos = (mask1 == label_class)#.astype(torch.float32)
+			mask2_pos = (mask2 == label_class)#.astype(torch.float32)
+			dice = 2 * torch.sum(mask1_pos * mask2_pos) / (torch.sum(mask1_pos) + torch.sum(mask2_pos))
+			dice_scores.append(dice.cpu().numpy())
+		return dice_scores
 
 if __name__ == '__main__':
 	Main(load_model_params=False, save_model_params=True, dataset_debug=False)
