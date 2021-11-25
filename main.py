@@ -16,9 +16,9 @@ from ncprojectLossFunctions import *
 
 
 class Main:
-	def __init__(self, train=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
+	def __init__(self, train=True, test=True, eval=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
 				 learning_rate=1e-3, batch_size=16, num_workers=2, load_model_params=True, save_model_params=True,
-				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True):
+				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice'):
 
 		# initialize class properties from arguments
 		self.train_dir, self.test_dir = train__dir, test_dir
@@ -52,8 +52,12 @@ class Main:
 			self.model.load_state_dict(torch.load(saved_params_path, map_location=self.device))
 
 		# set loss function
-		# self.loss = nn.CrossEntropyLoss()
-		self.loss = FocalLoss()
+		if loss_fn=='CE':
+			self.loss = nn.CrossEntropyLoss()
+		elif loss_fn == 'Focal':
+			self.loss = FocalLoss()
+		elif loss_fn == 'Dice':
+			self.loss = DiceLoss()
 
 		# set optimiser
 		self.optim = optim.Adam(self.model.parameters(), self.lr)
@@ -65,8 +69,11 @@ class Main:
 		if train:
 			self.train()		# carry out training
 
-		self.model_test()  # Un comment to test forward pass of model
-		self.evaluate()		# Evaluate dice score	
+		if test:
+			self.model_test()  # Un comment to test forward pass of model
+		
+		if eval:
+			self.evaluate()		# Evaluate dice score	
 
 	def dataset_properties(self):
 		"""Find out statistics about number of pixels in the dataset belonging to each class"""
@@ -280,4 +287,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(train=False, load_model_params=True, save_model_params=True, dataset_debug=False)
+	Main(load_model_params=False, save_model_params=True, train=True, test=True, eval=False, epochs = 3, loss_fn='Dice', dataset_debug=False)
