@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import glob
-
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,9 +16,9 @@ from ncprojectLossFunctions import *
 
 
 class Main:
-	def __init__(self, train=True, test=True, eval=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
-				 learning_rate=1e-3, batch_size=16, num_workers=2, load_model_params=True, save_model_params=True,
-				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice'):
+	def __init__(self, train=True, test=True, eval=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=1,
+				 learning_rate=1e-3, batch_size=8, num_workers=2, load_model_params=True, save_model_params=True,
+				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice',transform_data = False):
 
 		# initialize class properties from arguments
 		self.train_dir, self.test_dir = train__dir, test_dir
@@ -34,7 +34,7 @@ class Main:
 
 		# set properties relating to dataset
 		self.train_dataset_size = len(glob.glob(os.path.join(self.train_dir, 'image', "*.png")))
-		self.train_dataset = DatasetClass(self.train_dir)
+		self.train_dataset = DatasetClass(self.train_dir,transform = transform_data)
 		self.val_dataset = DatasetClass(self.val_dir)
 		self.test_dataset = DatasetClass(self.test_dir)
 
@@ -143,6 +143,7 @@ class Main:
 		"""Carry out training on the model"""
 		train_losses = []
 		val_losses = []
+	
 		for epoch in range(self.epochs):
 			train_epoch_loss = 0
 			val_epoch_loss = 0
@@ -174,6 +175,7 @@ class Main:
 		plt.plot(train_losses, c='r', label='train')
 		plt.plot(val_losses, c='g', label='val')
 		plt.xticks(np.arange(0, len(train_losses), 1))
+		plt.tight_layout()
 		plt.legend()
 		plt.show()
 
@@ -287,4 +289,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(load_model_params=False, save_model_params=True, train=True, test=True, eval=False, epochs = 3, loss_fn='Dice', dataset_debug=False)
+	Main(load_model_params=False, save_model_params=True, train=True, test=True, eval=False, epochs = 2, loss_fn='Dice', dataset_debug=False,transform_data = False)
