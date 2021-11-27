@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from numpy import random
+
 
 class DatasetClass(Dataset):
     def __init__(self, root='',transform = False):
@@ -17,24 +17,24 @@ class DatasetClass(Dataset):
             self.mask_files.append(os.path.join(root, 'mask', basename[:-4]+'_mask.png'))
 
     def AugmentData(self,data,label):
-        prob = random.rand(1, 3)[0]
+        prob = np.random.rand(1, 3)[0]
 
-        #Rotate image with any angle between [-5,5] if the probablity is greater than 30%
-        if prob[0] >= 0.3:
-            angle = random.randint(-5,5,1)
+        #Rotate image with any angle between [-5,5] with a probability of 30%
+        if prob[0] >= 0.7:
+            angle = np.random.randint(-5,5,1)
             (h, w) = data.shape[:2]
             (cX, cY) = (w // 2, h // 2)
             M = cv2.getRotationMatrix2D((cX, cY), float(angle), 1.0)
             data = cv2.warpAffine(data, M, (w, h))
             label = cv2.warpAffine(label, M, (w, h))
 
-        # Flip image vertically if probability is greater than 30
-        if prob[1] >= 0.3:
+        # Flip image vertically with a probability of 30%
+        if prob[1] >= 0.7:
             data = cv2.flip(data, 0)
             label = cv2.flip(label, 0)
 
-        #Flip image Horizontally if probability is greater than 30
-        if prob[2] >=0.3:
+        #Flip image Horizontally with a probability of 30%
+        if prob[2] >=0.7:
             data = cv2.flip(data, 1)
             label = cv2.flip(label, 1)
 
