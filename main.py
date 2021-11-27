@@ -12,14 +12,16 @@ import torch.optim as optim
 from ncprojectUnetClass import Unet
 from ncprojectDataSetClass import DatasetClass
 from ncprojectLossFunctions import *
+from ncprojectDeepLabV3 import *
 
 
 class Main:
-	def __init__(self, train=True, test=True, eval=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=1,
+	def __init__(self, model_arch='Unet', train=True, test=True, evalu=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=1,
 				 learning_rate=1e-3, batch_size=8, num_workers=2, load_model_params=True, save_model_params=True,
-				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice',transform_data = False):
+				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice', transform_data=False):
 
 		# initialize class properties from arguments
+		self.model_arch = model_arch
 		self.train_dir, self.test_dir = train__dir, test_dir
 		self.epochs, self.lr = epochs, learning_rate
 		self.batch_size, self.num_workers = batch_size, num_workers
@@ -44,14 +46,17 @@ class Main:
 										   num_workers=1, pin_memory=True, drop_last=False)
 
 		# create the model
-		self.model = Unet(image_channels=1, hidden_size=16).to(self.device)
+		if self.model_arch == 'DeepLabV3':
+			self.model = DeepLabV3(image_channels=1, resnetType='ResNet50', n_classes=4).to(self.device)	#DeepLabV3 architecture
+		else:
+			self.model = Unet(image_channels=1, hidden_size=16, n_classes=4).to(self.device)	#default - Unet architecture
 
 		# load model parameters from file
 		if load_model_params and os.path.isfile(saved_params_path):
 			self.model.load_state_dict(torch.load(saved_params_path, map_location=self.device))
 
 		# set loss function
-		if loss_fn=='CE':
+		if loss_fn =='CE':
 			self.loss = nn.CrossEntropyLoss()
 		elif loss_fn == 'Focal':
 			self.loss = FocalLoss()
@@ -71,8 +76,8 @@ class Main:
 		if test:
 			self.model_test()  # Un comment to test forward pass of model
 		
-		if eval:
-			self.evaluate()		# Evaluate dice score	
+		if evalu:
+			self.evaluate()		# Evaluate dice score
 
 	def dataset_properties(self):
 		"""Find out statistics about number of pixels in the dataset belonging to each class"""
@@ -142,7 +147,8 @@ class Main:
 		"""Carry out training on the model"""
 		train_losses = []
 		val_losses = []
-	
+		if self.model_arch == 'DeepLabV3':
+			self.model.train()
 		for epoch in range(self.epochs):
 			train_epoch_loss = 0
 			val_epoch_loss = 0
@@ -174,15 +180,15 @@ class Main:
 		plt.plot(train_losses, c='r', label='train')
 		plt.plot(val_losses, c='g', label='val')
 		plt.xticks(np.arange(0, len(train_losses), 1))
-		plt.tight_layout()
 		plt.legend()
 		plt.show()
 
 	def model_test(self):
 		"""display performance on each of validation data"""
+		if self.model_arch == 'DeepLabV3':
+			self.model.eval()
 		for i in range(1, 21):
 			iStr = "0" + str(i) if i < 10 else str(i)
-
 			# load in base image
 			img = cv2.imread(os.path.join(self.val_dir, 'image', 'cmr1{}.png'.format(iStr)), cv2.IMREAD_UNCHANGED)
 
@@ -224,6 +230,8 @@ class Main:
 
 	def evaluate(self):
 		"""display performance on each of validation data"""
+		if self.model_arch == 'DeepLabV3':
+			self.model.eval()
 		dice_scores = []
 		for i in range(1, 21):
 			iStr = "0" + str(i) if i < 10 else str(i)
@@ -258,7 +266,7 @@ class Main:
 		print(dice_scores_norm, num_classes)
 				
 	def one_hot(self, masks):
-		return F.one_hot(torch.argmax(masks, axis=-1))
+		return F.one_hot(torch.argmax(masks, axis=-1),num_classes=4)
 
 	def un_one_hot(self, masks):
 		""" Convert from K channels to 1 channel containing pixel values corresponding to class index"""
@@ -288,4 +296,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(load_model_params=False, save_model_params=True, train=True, test=True, eval=False, epochs = 2, loss_fn='Dice', dataset_debug=False,transform_data = False)
+	Main(model_arch='Unet', load_model_params=False, save_model_params=True, train=True, test=True, evalu=True, epochs = 500, loss_fn='Focal', dataset_debug=False, transform_data=False)
