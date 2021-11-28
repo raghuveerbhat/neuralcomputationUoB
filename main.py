@@ -38,9 +38,9 @@ class Main:
 
 		# set properties relating to dataset
 		self.train_dataset_size = len(glob.glob(os.path.join(self.train_dir, 'image', "*.png")))
-		self.train_dataset = DatasetClass(self.train_dir)
-		self.val_dataset = DatasetClass(self.val_dir)
-		self.test_dataset = DatasetClass(self.test_dir)
+		self.train_dataset = DatasetClass(self.train_dir, flag='train')
+		self.val_dataset = DatasetClass(self.val_dir,flag='val')
+		self.test_dataset = DatasetClass(self.test_dir,flag='test')
 
 		# load data ready for training
 		self.train_dataloader = DataLoader(self.train_dataset, self.batch_size, shuffle=True,
