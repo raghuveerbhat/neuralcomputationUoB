@@ -158,9 +158,9 @@ class Main:
 			val_epoch_loss = 0
 			for batch_idx1, (data, label) in enumerate(self.train_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
-				data = data.expand(-1,3,-1,-1)
-				# print(data.shape)
-				# exit()
+				# As Resnet expects data to have 3 channel
+				if self.model_arch == 'DeepLabV3':
+					data = data.expand(-1,3,-1,-1)
 				out = self.model(data) # forward pas
 				loss = self.loss(out, label) # loss calculation
 				self.optim.zero_grad() # back-propogation
@@ -170,7 +170,9 @@ class Main:
 
 			for batch_idx2, (data, label) in enumerate(self.val_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
-				data = data.expand(-1,3,-1,-1)
+				# As Resnet expects data to have 3 channel
+				if self.model_arch == 'DeepLabV3':
+					data = data.expand(-1,3,-1,-1)
 				out = self.model(data) # forward pass
 
 				loss = self.loss(out, label) # val loss calculation
@@ -210,7 +212,9 @@ class Main:
 				self.device).float()/255
 			with torch.no_grad():
 				# process through model
-				self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
+				# As Resnet expects data to have 3 channel
+				if self.model_arch == 'DeepLabV3':
+					self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
 				out = self.model(self.img_tensor)
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
 				out = self.one_hot(out).cpu().numpy()[0]*255
@@ -260,7 +264,9 @@ class Main:
 				self.device).float()
 			with torch.no_grad():
 				# process through model
-				self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
+				# As Resnet expects data to have 3 channel
+				if self.model_arch == 'DeepLabV3':
+					self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
 				out = self.model(self.img_tensor)
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
 				out = self.un_one_hot(out)
@@ -277,7 +283,7 @@ class Main:
 		print(dice_scores_norm, num_classes)
 				
 	def one_hot(self, masks):
-		return F.one_hot(torch.argmax(masks, axis=-1),num_classes=4)
+		return F.one_hot(torch.argmax(masks, axis=-1))
 
 	def un_one_hot(self, masks):
 		""" Convert from K channels to 1 channel containing pixel values corresponding to class index"""
@@ -307,4 +313,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(model_arch='DeepLabV3', load_model_params=True, save_model_params=True, train=True, test=True, evalu=True, epochs = 10, loss_fn='DiceFocal', dataset_debug=False, transform_data=True)
+	Main(model_arch='Unet', load_model_params=False, save_model_params=True, train=True, test=True, evalu=True, epochs = 100, loss_fn='DiceFocal', dataset_debug=False, transform_data=True)
