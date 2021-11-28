@@ -21,7 +21,7 @@ class Main:
 	def __init__(self, train=True, test=True, eval=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=3,
 				 learning_rate=1e-3, reg=1e-3, batch_size=16, num_workers=2, load_model_params=True, save_model_params=True,
 				 saved_params_path="models/focalloss_earlystop.pt", save_freq=5, dataset_debug=True, loss_fn='Focal', tensorboard_log='runs/test_1',
-				 model_arch='DeepLabV3'):
+				 model_arch='DeepLabV3', test_path='test_results', aug=True, early_stop=True):
 
 		# initialize class properties from arguments
 		self.train_dir, self.test_dir = train__dir, test_dir
@@ -32,13 +32,18 @@ class Main:
 		self.saved_params_path = saved_params_path
 		self.save_freq = save_freq
 		self.model_arch = model_arch
+		self.test_path = test_path
+		self.aug = aug
+		self.early_stop = early_stop
+		if not os.path.exists(self.test_path):
+			os.makedirs(self.test_path)
 
 		# determine if GPU can be used and assign to 'device' class property
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 		# set properties relating to dataset
 		self.train_dataset_size = len(glob.glob(os.path.join(self.train_dir, 'image', "*.png")))
-		self.train_dataset = DatasetClass(self.train_dir, flag='train')
+		self.train_dataset = DatasetClass(self.train_dir, flag='train', aug=self.aug)
 		self.val_dataset = DatasetClass(self.val_dir,flag='val')
 		self.test_dataset = DatasetClass(self.test_dir,flag='test')
 
@@ -46,8 +51,8 @@ class Main:
 		self.train_dataloader = DataLoader(self.train_dataset, self.batch_size, shuffle=True,
 										   num_workers=self.num_workers, pin_memory=True, drop_last=True)
 		self.val_dataloader = DataLoader(self.val_dataset, self.batch_size, shuffle=True,
-										   num_workers=1, pin_memory=True, drop_last=True)
-		self.test_dataloader = DataLoader(self.test_dataset, self.batch_size, shuffle=True,
+										   num_workers=1, pin_memory=True, drop_last=False)
+		self.test_dataloader = DataLoader(self.test_dataset, self.batch_size, shuffle=False,
 										   num_workers=1, pin_memory=True, drop_last=False)
 
 		# create the model
@@ -93,8 +98,9 @@ class Main:
 			self.model_test()  # Un comment to test forward pass of model
 		
 		if eval:
-			self.evaluate()		# Evaluate dice score	
-			# self.evaluate_multiple()		# Evaluate dice score	
+			self.test_preds_generate()						# Save masks
+			self.submission_converter(self.test_path, "")	# Create csv file
+			self.evaluate()									# Evaluate dice score	
 
 	def dataset_properties(self):
 		"""Find out statistics about number of pixels in the dataset belonging to each class"""
@@ -161,16 +167,16 @@ class Main:
 		early_stopping_check = None
 		early_stopping_freq = 3
 		check = 0
+		self.model.train()
 		for epoch in range(self.epochs):
 			train_epoch_loss = 0
 			val_epoch_loss = 0
 			val_scores = []
-
 			for batch_idx1, (data, label) in enumerate(self.train_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
 				if self.model_arch == 'DeepLabV3':
 					data = data.expand(-1,3,-1,-1)
-				out = self.model(data) # forward pas
+				out = self.model(data) # forward pass
 				loss = self.loss(out, label) # loss calculation
 				self.optim.zero_grad() # back-propogation
 				loss.backward()
@@ -214,18 +220,19 @@ class Main:
 				torch.save(self.model.state_dict(), self.saved_params_path)
 
 			# early stopping
-			# if epoch==0:
-			# 	early_stopping_check = np.mean(val_scores)
+			if self.early_stop:
+				if epoch==0:
+					early_stopping_check = np.mean(val_scores)
 
-			# elif epoch % early_stopping_freq==0:
-			# 	mean_scores = np.mean(val_scores)
-			# 	if np.mean(mean_scores) < np.mean(early_stopping_check):
-			# 		check += 1
-			# 		print("Check", check)
-			# 		if check == 3:
-			# 			print("EARLY STOPPING")
-			# 			break
-			# 	early_stopping_check = np.mean(val_scores)
+				elif epoch % early_stopping_freq==0:
+					mean_scores = np.mean(val_scores)
+					if np.mean(mean_scores) < np.mean(early_stopping_check):
+						check += 1
+						print("Check", check)
+						if check == 3:
+							print("EARLY STOPPING")
+							break
+					early_stopping_check = np.mean(val_scores)
 
 	def model_test(self):
 		"""display performance on each of validation data"""
@@ -274,6 +281,22 @@ class Main:
 				k = cv2.waitKey()
 				if k == ord('q'):
 					exit()
+
+	def test_preds_generate(self):
+		"""display performance on each of validation data"""
+		self.model.eval()
+		self.test_data = glob.glob(os.path.join(self.test_dir, 'image', "*.png"))
+		for file in self.test_data:
+			img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
+			self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(
+				self.device).float()/255
+			with torch.no_grad():
+				if self.model_arch == 'DeepLabV3':
+					self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
+				out = self.model(self.img_tensor) # forward pass
+				out = F.softmax(out, 1).permute(0, 2, 3, 1)
+				out = self.un_one_hot(out).cpu().numpy()[0]
+				cv2.imwrite(self.test_path+"/"+file.split("\\")[-1], out)
 
 	def evaluate(self):
 		"""display performance on each of validation data"""
@@ -338,6 +361,43 @@ class Main:
 			dice_scores.append(dice.cpu().numpy())
 		return dice_scores
 
+	def rle_encoding(self, x):
+		dots = np.where(x.T.flatten() == 1)[0]
+		run_lengths = []
+		prev = -2
+		for b in dots:
+			if (b > prev + 1): run_lengths.extend((b + 1, 0))
+			run_lengths[-1] += 1
+			prev = b
+		return run_lengths
+
+	def submission_converter(self, mask_directory, path_to_save):
+		writer = open(os.path.join(path_to_save, "submission.csv"), 'w')
+		writer.write('id, encoding\n')
+
+		files = os.listdir(mask_directory)
+
+		for file in files:
+			name = file[:-4]
+			mask = cv2.imread(os.path.join(mask_directory, file), cv2.IMREAD_UNCHANGED)
+
+			mask1 = (mask == 1)
+			mask2 = (mask == 2)
+			mask3 = (mask == 3)
+
+			encoded_mask1 = self.rle_encoding(mask1)
+			encoded_mask1 = ' '.join(str(e) for e in encoded_mask1)
+			encoded_mask2 = self.rle_encoding(mask2)
+			encoded_mask2 = ' '.join(str(e) for e in encoded_mask2)
+			encoded_mask3 = self.rle_encoding(mask3)
+			encoded_mask3 = ' '.join(str(e) for e in encoded_mask3)
+
+			writer.write(name + '1,' + encoded_mask1 + "\n")
+			writer.write(name + '2,' + encoded_mask2 + "\n")
+			writer.write(name + '3,' + encoded_mask3 + "\n")
+
+		writer.close()
+
 if __name__ == '__main__':
-	Main(load_model_params=True, save_model_params=True, train=False, test=True, eval=True, epochs = 200, loss_fn='WeightedDice', dataset_debug=False,
-		tensorboard_log='runs/unet_aug_lr1e-3_reg1e-3_cedice_test_1', model_arch='DeepLabV3')
+	Main(load_model_params=True, save_model_params=True, train=False, test=False, eval=True, epochs = 200, loss_fn='WeightedDice', dataset_debug=False,
+		tensorboard_log='runs/unet_aug_lr1e-3_reg1e-3_cedice_test_1', model_arch='DeepLabV3', test_path='test_results', aug=False, early_stop=True)
