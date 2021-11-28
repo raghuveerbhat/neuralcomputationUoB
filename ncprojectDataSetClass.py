@@ -26,7 +26,7 @@ class DatasetClass(Dataset):
             pass
         elif rand_int == 1: # Horizontal flip
             data, label = cv2.flip(data, 1), cv2.flip(label, 1)
-        elif rand_int == 1: # Vertical flip
+        elif rand_int == 2: # Vertical flip
             data, label = cv2.flip(data, 0), cv2.flip(label, 1)
         else:               # Rotation
             angle = np.random.randint(-20, 20)
