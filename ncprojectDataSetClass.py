@@ -8,9 +8,10 @@ import torchvision.transforms as T
 
 
 class DatasetClass(Dataset):
-    def __init__(self, root='', flag='train'):
+    def __init__(self, root='', flag='train', aug=True):
         super(DatasetClass, self).__init__()
         self.flag = flag
+        self.aug = aug
         self.img_files = glob.glob(os.path.join(root, 'image', '*.png'))
         self.mask_files = []
         for img_path in self.img_files:
@@ -27,7 +28,7 @@ class DatasetClass(Dataset):
         else:
             mask_path = self.mask_files[index]
             label = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-            if self.flag=='train':
+            if self.flag=='train' and self.aug:
                 rand_int = np.random.randint(4)
                 if rand_int == 0:   # No augmentation
                     pass
