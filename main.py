@@ -296,7 +296,8 @@ class Main:
 				out = self.model(self.img_tensor) # forward pass
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
 				out = self.un_one_hot(out).cpu().numpy()[0]
-				cv2.imwrite(self.test_path+"/"+file.split("\\")[-1], out)
+				path = self.test_path + "/" + file.split("\\")[-1].split(".")[0] + "_mask.png"
+				cv2.imwrite(path, out)
 
 	def evaluate(self):
 		"""display performance on each of validation data"""
