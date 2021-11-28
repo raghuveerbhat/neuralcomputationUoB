@@ -18,7 +18,7 @@ from ncprojectDeepLabV3 import *
 class Main:
 	def __init__(self, model_arch='Unet', train=True, test=True, evalu=True, train__dir='./data/train', test_dir='./data/test', val_dir="./data/val", epochs=1,
 				 learning_rate=1e-3, batch_size=8, num_workers=2, load_model_params=True, save_model_params=True,
-				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='Dice', transform_data=False):
+				 saved_params_path="models/modelparams.pt", save_freq=5, dataset_debug=True, loss_fn='DiceFocal', transform_data=False):
 
 		# initialize class properties from arguments
 		self.model_arch = model_arch
@@ -47,9 +47,11 @@ class Main:
 
 		# create the model
 		if self.model_arch == 'DeepLabV3':
-			self.model = DeepLabV3(image_channels=1, resnetType='ResNet50', n_classes=4).to(self.device)	#DeepLabV3 architecture
-		else:
-			self.model = Unet(image_channels=1, hidden_size=16, n_classes=4).to(self.device)	#default - Unet architecture
+			# DeepLabV3 architecture
+			self.model = DeepLabV3(n_classes=4).to(self.device)
+		elif self.model_arch == 'Unet':
+			# Unet architecture
+			self.model = Unet(image_channels=1, hidden_size=16, n_classes=4).to(self.device)
 
 		# load model parameters from file
 		if load_model_params and os.path.isfile(saved_params_path):
@@ -62,6 +64,8 @@ class Main:
 			self.loss = FocalLoss()
 		elif loss_fn == 'Dice':
 			self.loss = DiceLoss()
+		elif loss_fn == 'DiceFocal':
+			self.loss = DiceFocalLoss()
 
 		# set optimiser
 		self.optim = optim.Adam(self.model.parameters(), self.lr)
@@ -154,6 +158,9 @@ class Main:
 			val_epoch_loss = 0
 			for batch_idx1, (data, label) in enumerate(self.train_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
+				data = data.expand(-1,3,-1,-1)
+				# print(data.shape)
+				# exit()
 				out = self.model(data) # forward pas
 				loss = self.loss(out, label) # loss calculation
 				self.optim.zero_grad() # back-propogation
@@ -163,7 +170,9 @@ class Main:
 
 			for batch_idx2, (data, label) in enumerate(self.val_dataloader):
 				data, label = data.to(self.device), label.to(self.device)
-				out = self.model(data) # forward pas
+				data = data.expand(-1,3,-1,-1)
+				out = self.model(data) # forward pass
+
 				loss = self.loss(out, label) # val loss calculation
 				val_epoch_loss += loss
 
@@ -201,6 +210,7 @@ class Main:
 				self.device).float()/255
 			with torch.no_grad():
 				# process through model
+				self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
 				out = self.model(self.img_tensor)
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
 				out = self.one_hot(out).cpu().numpy()[0]*255
@@ -250,6 +260,7 @@ class Main:
 				self.device).float()
 			with torch.no_grad():
 				# process through model
+				self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
 				out = self.model(self.img_tensor)
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
 				out = self.un_one_hot(out)
@@ -296,4 +307,4 @@ class Main:
 		return dice_scores
 
 if __name__ == '__main__':
-	Main(model_arch='Unet', load_model_params=False, save_model_params=True, train=True, test=True, evalu=True, epochs = 500, loss_fn='Focal', dataset_debug=False, transform_data=False)
+	Main(model_arch='DeepLabV3', load_model_params=True, save_model_params=True, train=True, test=True, evalu=True, epochs = 10, loss_fn='DiceFocal', dataset_debug=False, transform_data=True)
