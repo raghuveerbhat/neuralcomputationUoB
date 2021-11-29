@@ -208,3 +208,113 @@ class DeepLabV3(torch.nn.Module):
         # Upsampling step
         out = F.interpolate(out, size=(h, w), mode="bilinear", align_corners=True)
         return out
+
+
+class Unet2(torch.nn.Module):
+    def __init__(self, image_channels=1, hidden_size=16, n_classes=4):
+        super(Unet2, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Encoder
+        self.conv1_1 = nn.Conv2d(in_channels=image_channels, out_channels=hidden_size, kernel_size=3, stride=1, padding=1)
+        self.batch1_1 = nn.BatchNorm2d(hidden_size, affine=True)
+        self.conv1_2 = nn.Conv2d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, stride=1, padding=1)
+        self.batch1_2 = nn.BatchNorm2d(hidden_size, affine=True)
+        self.pool1 = nn.MaxPool2d(3, 2, padding=1)
+        self.dropout1 = nn.Dropout(0.1) 
+
+        self.conv2_1 = nn.Conv2d(in_channels=hidden_size, out_channels=hidden_size*2, kernel_size=3, stride=1, padding=1)
+        self.batch2_1 = nn.BatchNorm2d(hidden_size*2, affine=True)
+        self.conv2_2 = nn.Conv2d(in_channels=hidden_size*2, out_channels=hidden_size*2, kernel_size=3, stride=1, padding=1)
+        self.batch2_2 = nn.BatchNorm2d(hidden_size*2, affine=True)
+        self.pool2 = nn.MaxPool2d(3, 2, padding=1)
+        self.dropout2 = nn.Dropout(0.1) 
+
+        self.conv3_1 = nn.Conv2d(in_channels=hidden_size*2, out_channels=hidden_size*4, kernel_size=3, stride=1, padding=1)
+        self.batch3_1 = nn.BatchNorm2d(hidden_size*4, affine=True)
+        self.conv3_2 = nn.Conv2d(in_channels=hidden_size*4, out_channels=hidden_size*4, kernel_size=3, stride=1, padding=1)
+        self.batch3_2 = nn.BatchNorm2d(hidden_size*4, affine=True)
+        self.pool3 = nn.MaxPool2d(3, 2, padding=1)
+        self.dropout3 = nn.Dropout(0.1) 
+
+        self.conv4_1 = nn.Conv2d(in_channels=hidden_size*4, out_channels=hidden_size*8, kernel_size=3, stride=1, padding=1)
+        self.batch4_1 = nn.BatchNorm2d(hidden_size*8, affine=True)
+        self.conv4_2 = nn.Conv2d(in_channels=hidden_size*8, out_channels=hidden_size*8, kernel_size=3, stride=1, padding=1)
+        self.batch4_2 = nn.BatchNorm2d(hidden_size*8, affine=True)
+        self.pool4 = nn.MaxPool2d(3, 2, padding=1)
+        self.dropout4 = nn.Dropout(0.1) 
+
+        # Bottleneck
+        self.bottleneck_conv = nn.Conv2d(in_channels=hidden_size*8, out_channels=hidden_size*16, kernel_size=3, stride=1, padding=1)
+        self.bottleneck_batch = nn.BatchNorm2d(hidden_size*16, affine=True)
+
+        # Decoder
+        self.upsample_4 = nn.ConvTranspose2d(in_channels=hidden_size*16, out_channels=hidden_size*8, kernel_size=2, stride=2)
+        self.upconv4_1 = nn.Conv2d(in_channels=hidden_size*16, out_channels=hidden_size*8, kernel_size=3, stride=1, padding=1)
+        self.upbatch4_1 = nn.BatchNorm2d(hidden_size*8, affine=True)
+        self.upconv4_2 = nn.Conv2d(in_channels=hidden_size*8, out_channels=hidden_size*8, kernel_size=3, stride=1, padding=1)
+        self.upbatch4_2 = nn.BatchNorm2d(hidden_size*8, affine=True)
+        self.dropout5 = nn.Dropout(0.1) 
+
+        self.upsample_3 = nn.ConvTranspose2d(in_channels=hidden_size*8, out_channels=hidden_size*4, kernel_size=2, stride=2)
+        self.upconv3_1 = nn.Conv2d(in_channels=hidden_size*8, out_channels=hidden_size*4, kernel_size=3, stride=1, padding=1)
+        self.upbatch3_1 = nn.BatchNorm2d(hidden_size*4, affine=True)
+        self.upconv3_2 = nn.Conv2d(in_channels=hidden_size*4, out_channels=hidden_size*4, kernel_size=3, stride=1, padding=1)
+        self.upbatch3_2 = nn.BatchNorm2d(hidden_size*4, affine=True)
+        self.dropout6 = nn.Dropout(0.1) 
+
+        self.upsample_2 = nn.ConvTranspose2d(in_channels=hidden_size*4, out_channels=hidden_size*2, kernel_size=2, stride=2)
+        self.upconv2_1 = nn.Conv2d(in_channels=hidden_size*4, out_channels=hidden_size*2, kernel_size=3, stride=1, padding=1)
+        self.upbatch2_1 = nn.BatchNorm2d(hidden_size*2, affine=True)
+        self.upconv2_2 = nn.Conv2d(in_channels=hidden_size*2, out_channels=hidden_size*2, kernel_size=3, stride=1, padding=1)
+        self.upbatch2_2 = nn.BatchNorm2d(hidden_size*2, affine=True)
+        self.dropout7 = nn.Dropout(0.1) 
+
+        self.upsample_1 = nn.ConvTranspose2d(in_channels=hidden_size*2, out_channels=hidden_size, kernel_size=2, stride=2)
+        self.upconv1_1 = nn.Conv2d(in_channels=hidden_size*2, out_channels=hidden_size, kernel_size=3, stride=1, padding=1)
+        self.upbatch1_1 = nn.BatchNorm2d(hidden_size, affine=True)
+        self.upconv1_2 = nn.Conv2d(in_channels=hidden_size, out_channels=hidden_size, kernel_size=3, stride=1, padding=1)
+        self.upbatch1_2 = nn.BatchNorm2d(hidden_size, affine=True)
+        self.dropout8 = nn.Dropout(0.1) 
+
+        # Final Layer
+        self.conv_out = nn.Conv2d(in_channels=hidden_size, out_channels=n_classes, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        self.enc_layer1 = F.leaky_relu(self.batch1_1(self.conv1_1(x)))
+        self.enc_layer1 = F.leaky_relu(self.batch1_2(self.conv1_2(self.enc_layer1)))
+        self.enc_layer1_pool = self.dropout1(self.pool1(self.enc_layer1))
+
+        self.enc_layer2 = F.leaky_relu(self.batch2_1(self.conv2_1(self.enc_layer1_pool)))
+        self.enc_layer2 = F.leaky_relu(self.batch2_2(self.conv2_2(self.enc_layer2)))
+        self.enc_layer2_pool = self.dropout2(self.pool2(self.enc_layer2))
+
+        self.enc_layer3 = F.leaky_relu(self.batch3_1(self.conv3_1(self.enc_layer2_pool)))
+        self.enc_layer3 = F.leaky_relu(self.batch3_2(self.conv3_2(self.enc_layer3)))
+        self.enc_layer3_pool = self.dropout3(self.pool3(self.enc_layer3))
+
+        self.enc_layer4 = F.leaky_relu(self.batch4_1(self.conv4_1(self.enc_layer3_pool)))
+        self.enc_layer4 = F.leaky_relu(self.batch4_2(self.conv4_2(self.enc_layer4)))
+        self.enc_layer4_pool = self.dropout4(self.pool4(self.enc_layer4))
+
+        self.bottleneck_layer = F.leaky_relu(self.bottleneck_batch(self.bottleneck_conv(self.enc_layer4_pool)))
+
+        self.up4 = torch.cat((self.upsample_4(self.bottleneck_layer), self.enc_layer4), 1)
+        self.up4 = F.leaky_relu(self.batch4_1(self.upconv4_1(self.up4)))
+        self.up4 = self.dropout5(F.leaky_relu(self.batch4_2(self.upconv4_2(self.up4))))
+
+        self.up3 = torch.cat((self.upsample_3(self.up4), self.enc_layer3), 1)
+        self.up3 = F.leaky_relu(self.batch3_1(self.upconv3_1(self.up3)))
+        self.up3 = self.dropout6(F.leaky_relu(self.batch3_2(self.upconv3_2(self.up3))))
+
+        self.up2 = torch.cat((self.upsample_2(self.up3), self.enc_layer2), 1)
+        self.up2 = F.leaky_relu(self.batch2_1(self.upconv2_1(self.up2)))
+        self.up2 = self.dropout7(F.leaky_relu(self.batch2_2(self.upconv2_2(self.up2))))
+
+        self.up1 = torch.cat((self.upsample_1(self.up2), self.enc_layer1), 1)
+        self.up1 = F.leaky_relu(self.batch1_1(self.upconv1_1(self.up1)))
+        self.up1 = self.dropout8(F.leaky_relu(self.batch1_2(self.upconv1_2(self.up1))))
+
+        self.out = self.conv_out(self.up1)
+
+        return self.out
