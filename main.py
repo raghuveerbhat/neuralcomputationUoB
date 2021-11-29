@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
-from ncprojectModels import Unet, DeepLabV3
+from ncprojectModels import Unet, Unet2, DeepLabV3, SegNet
 from ncprojectDataSetClass import DatasetClass
 from ncprojectLossFunctions import *
 from ncprojectEvaluationMetrics import *
@@ -49,7 +49,7 @@ class Main:
 
 		# load data ready for training
 		self.train_dataloader = DataLoader(self.train_dataset, self.batch_size, shuffle=True,
-										   num_workers=self.num_workers, pin_memory=True, drop_last=True)
+										   num_workers=self.num_workers, pin_memory=True, drop_last=False)
 		self.val_dataloader = DataLoader(self.val_dataset, self.batch_size, shuffle=True,
 										   num_workers=1, pin_memory=True, drop_last=False)
 		self.test_dataloader = DataLoader(self.test_dataset, self.batch_size, shuffle=False,
@@ -60,6 +60,8 @@ class Main:
 			self.model = Unet(image_channels=1, hidden_size=32).to(self.device)
 		elif self.model_arch == 'DeepLabV3': 
 			self.model = DeepLabV3(n_classes=4).to(self.device)
+		elif self.model_arch == 'SegNet': 
+			self.model = SegNet().to(self.device)
 
 		# load model parameters from file
 		if load_model_params and os.path.isfile(saved_params_path):
@@ -95,11 +97,10 @@ class Main:
 			self.writer.close()
 			
 		if test:
-			self.model_test()  # Un comment to test forward pass of model
+			self.model_test()  # Test forward pass of model
 		
 		if eval:
 			self.test_preds_generate()						# Save masks
-			self.submission_converter(self.test_path, "")	# Create csv file
 			self.evaluate()									# Evaluate dice score	
 
 	def dataset_properties(self):
@@ -165,8 +166,7 @@ class Main:
 		train_losses = []
 		val_losses = []
 		early_stopping_check = None
-		early_stopping_freq = 3
-		check = 0
+		patience, best_score= 5, 0
 		self.model.train()
 		for epoch in range(self.epochs):
 			train_epoch_loss = 0
@@ -214,29 +214,26 @@ class Main:
 
 			print("EPOCH {}: ".format(epoch), train_epoch_loss, val_epoch_loss)
 
-			# save model parameters to file
-			if ((epoch+1) % self.save_freq==0) and self.save_model_params:
-				print("Saving model")
-				torch.save(self.model.state_dict(), self.saved_params_path)
-
 			# early stopping
 			if self.early_stop:
 				if epoch==0:
-					early_stopping_check = np.mean(val_scores)
-
-				elif epoch % early_stopping_freq==0:
-					mean_scores = np.mean(val_scores)
-					if np.mean(mean_scores) < np.mean(early_stopping_check):
-						check += 1
-						print("Check", check)
-						if check == 3:
-							print("EARLY STOPPING")
-							break
-					early_stopping_check = np.mean(val_scores)
+					best_loss = np.mean(val_epoch_loss)
+				if val_epoch_loss < best_loss:
+					# save model parameters to file
+					print("Saving model")
+					torch.save(self.model.state_dict(), self.saved_params_path)
+					best_loss = val_epoch_loss
+					check = 0
+				elif val_epoch_loss >= best_score:
+					check += 1
+					if check >=patience:
+						print("EARLY STOPPING")
+						break
 
 	def model_test(self):
 		"""display performance on each of validation data"""
-		self.model.eval()
+		if self.model_arch=='DeepLabV3':
+			self.model.eval()
 		for i in range(1, 21):
 			iStr = "0" + str(i) if i < 10 else str(i)
 
@@ -284,9 +281,10 @@ class Main:
 
 	def test_preds_generate(self):
 		"""display performance on each of validation data"""
-		self.model.eval()
+		if self.model_arch == 'DeepLabV3':
+			self.model.eval()
 		self.test_data = glob.glob(os.path.join(self.test_dir, 'image', "*.png"))
-		for file in self.test_data:
+		for i, file in enumerate(self.test_data):
 			img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
 			self.img_tensor = torch.from_numpy(np.expand_dims(np.expand_dims(img.astype(np.uint8), 0), 0)).to(
 				self.device).float()/255
@@ -295,13 +293,32 @@ class Main:
 					self.img_tensor = self.img_tensor.expand(-1,3,-1,-1)
 				out = self.model(self.img_tensor) # forward pass
 				out = F.softmax(out, 1).permute(0, 2, 3, 1)
+				out_display = out.cpu().numpy()[0]*255
+				if i == 0:
+					self.out_mask = np.hstack((img.astype(np.uint8),
+											out_display[:, :, 0].astype(np.uint8),   # background
+											out_display[:, :, 1].astype(np.uint8),   # right ventricle
+											out_display[:, :, 2].astype(np.uint8),   # myocardium
+											out_display[:, :, 3].astype(np.uint8)))  # left ventricle
+				else:
+					self.out_mask = np.vstack((self.out_mask, np.hstack((img.astype(np.uint8),
+																out_display[:, :, 0].astype(np.uint8),   # background
+																out_display[:, :, 1].astype(np.uint8),   # right ventricle
+																out_display[:, :, 2].astype(np.uint8),   # myocardium
+																out_display[:, :, 3].astype(np.uint8)))))  # left ventricle
+
+				# display both images
 				out = self.un_one_hot(out).cpu().numpy()[0]
 				path = self.test_path + "/" + file.split("\\")[-1].split(".")[0] + "_mask.png"
 				cv2.imwrite(path, out)
 
+		plt.imshow(self.out_mask.squeeze())
+		plt.show()
+
 	def evaluate(self):
 		"""display performance on each of validation data"""
-		self.model.eval()
+		if self.model_arch == 'DeepLabV3':
+			self.model.eval()
 		dice_scores = []
 		for i in range(1, 21):
 			iStr = "0" + str(i) if i < 10 else str(i)
@@ -362,43 +379,6 @@ class Main:
 			dice_scores.append(dice.cpu().numpy())
 		return dice_scores
 
-	def rle_encoding(self, x):
-		dots = np.where(x.T.flatten() == 1)[0]
-		run_lengths = []
-		prev = -2
-		for b in dots:
-			if (b > prev + 1): run_lengths.extend((b + 1, 0))
-			run_lengths[-1] += 1
-			prev = b
-		return run_lengths
-
-	def submission_converter(self, mask_directory, path_to_save):
-		writer = open(os.path.join(path_to_save, "submission.csv"), 'w')
-		writer.write('id, encoding\n')
-
-		files = os.listdir(mask_directory)
-
-		for file in files:
-			name = file[:-4]
-			mask = cv2.imread(os.path.join(mask_directory, file), cv2.IMREAD_UNCHANGED)
-
-			mask1 = (mask == 1)
-			mask2 = (mask == 2)
-			mask3 = (mask == 3)
-
-			encoded_mask1 = self.rle_encoding(mask1)
-			encoded_mask1 = ' '.join(str(e) for e in encoded_mask1)
-			encoded_mask2 = self.rle_encoding(mask2)
-			encoded_mask2 = ' '.join(str(e) for e in encoded_mask2)
-			encoded_mask3 = self.rle_encoding(mask3)
-			encoded_mask3 = ' '.join(str(e) for e in encoded_mask3)
-
-			writer.write(name + '1,' + encoded_mask1 + "\n")
-			writer.write(name + '2,' + encoded_mask2 + "\n")
-			writer.write(name + '3,' + encoded_mask3 + "\n")
-
-		writer.close()
-
 if __name__ == '__main__':
-	Main(load_model_params=True, save_model_params=True, train=False, test=False, eval=True, epochs = 200, loss_fn='WeightedDice', dataset_debug=False,
-		tensorboard_log='runs/unet_aug_lr1e-3_reg1e-3_cedice_test_1', model_arch='DeepLabV3', test_path='test_results', aug=False, early_stop=True)
+	Main(load_model_params=True, save_model_params=True, saved_params_path="models/unettrainval.pt", train=False, test=False, eval=True, epochs = 200, loss_fn='Dice', dataset_debug=False,
+		tensorboard_log='runs/unet_aug_lr1e-3_reg1e-3_cedice_test_1', model_arch='Unet', test_path='test_results', aug=True, early_stop=False)
