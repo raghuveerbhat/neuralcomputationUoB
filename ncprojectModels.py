@@ -187,6 +187,8 @@ class ASPP(torch.nn.Module):
 
         return out
 
+'''Description: Implemeneted by referencing https://arxiv.org/abs/1706.05587 and http://www.fregu856.com/project/deeplabv3/ '''
+'''Requires Resnet18 pretrained model'''
 class DeepLabV3(torch.nn.Module):
     def __init__(self, n_classes=4):
         super(DeepLabV3, self).__init__()
