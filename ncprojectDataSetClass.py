@@ -43,7 +43,7 @@ class DatasetClass(Dataset):
                     data, label = cv2.warpAffine(data, M, (w,h)), cv2.warpAffine(label, M, (w,h))
 
             data = np.expand_dims(data, 0)
-            data_tensor, label_tensor = torch.from_numpy(data).float()/127.5-1, torch.from_numpy(label).long()
+            data_tensor, label_tensor = torch.from_numpy(data).float()/255, torch.from_numpy(label).long()
             return data_tensor, label_tensor   # Normalize pixels to lie between [0, 1]
 
     def __len__(self):
